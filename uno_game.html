@@ -1,0 +1,1089 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>UNO Master Card Game</title>
+    <!-- Tailwind CSS for modern responsive layout -->
+    <script src="https://cdn.tailwindcss.com"></script>
+    <!-- FontAwesome Icons for UI graphics -->
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
+    <!-- Google Fonts -->
+    <link href="https://fonts.googleapis.com/css2?family=Fredoka+One&family=Plus+Jakarta+Sans:wght@400;600;700;800&display=swap" rel="stylesheet">
+
+    <script>
+        tailwind.config = {
+            theme: {
+                extend: {
+                    fontFamily: {
+                        display: ['"Fredoka One"', 'cursive'],
+                        sans: ['"Plus Jakarta Sans"', 'sans-serif'],
+                    },
+                    colors: {
+                        unoRed: '#EF4444',
+                        unoYellow: '#F59E0B',
+                        unoGreen: '#10B981',
+                        unoBlue: '#3B82F6',
+                        unoDark: '#0F172A',
+                    },
+                    boxShadow: {
+                        'card': '0 8px 16px -4px rgba(0, 0, 0, 0.4), 0 4px 6px -2px rgba(0, 0, 0, 0.2)',
+                        'card-hover': '0 16px 24px -4px rgba(0, 0, 0, 0.5), 0 8px 10px -4px rgba(0, 0, 0, 0.3)',
+                        'glow': '0 0 20px rgba(255, 255, 255, 0.35)',
+                    }
+                }
+            }
+        }
+    </script>
+
+    <style>
+        body {
+            font-family: 'Plus Jakarta Sans', sans-serif;
+            background: radial-gradient(circle at center, #1e293b 0%, #0f172a 100%);
+            user-select: none;
+            overflow-x: hidden;
+        }
+
+        .poker-table {
+            background: radial-gradient(ellipse at center, #15803d 0%, #166534 60%, #052e16 100%);
+            border: 12px solid #3f2314;
+            box-shadow: inset 0 0 80px rgba(0,0,0,0.8), 0 20px 40px rgba(0,0,0,0.6);
+        }
+
+        /* 3D Card Hover & Flip Styles */
+        .card-container {
+            perspective: 1000px;
+        }
+
+        .uno-card {
+            transition: all 0.25s cubic-bezier(0.34, 1.56, 0.64, 1);
+            transform-style: preserve-3d;
+        }
+
+        .player-hand .uno-card:hover {
+            transform: translateY(-24px) scale(1.1) rotate(0deg) !important;
+            z-index: 50 !important;
+            box-shadow: 0 15px 30px rgba(0,0,0,0.5);
+        }
+
+        .uno-card-inner {
+            position: relative;
+            width: 100%;
+            height: 100%;
+            border-radius: 0.75rem;
+            transform-style: preserve-3d;
+            transition: transform 0.4s ease;
+        }
+
+        .uno-card.flipped .uno-card-inner {
+            transform: rotateY(180deg);
+        }
+
+        .uno-card-front, .uno-card-back {
+            position: absolute;
+            width: 100%;
+            height: 100%;
+            backface-visibility: hidden;
+            border-radius: 0.75rem;
+        }
+
+        .uno-card-back {
+            transform: rotateY(180deg);
+            background: linear-gradient(135deg, #1e293b, #0f172a);
+            border: 3px solid #f8fafc;
+        }
+
+        .card-oval {
+            border-radius: 50%;
+            transform: rotate(-30deg);
+        }
+
+        /* Pulse Animations */
+        @keyframes pulse-ring {
+            0% { transform: scale(0.95); box-shadow: 0 0 0 0 rgba(239, 68, 68, 0.7); }
+            70% { transform: scale(1.05); box-shadow: 0 0 0 15px rgba(239, 68, 68, 0); }
+            100% { transform: scale(0.95); box-shadow: 0 0 0 0 rgba(239, 68, 68, 0); }
+        }
+
+        .uno-btn-pulse {
+            animation: pulse-ring 1.5s infinite;
+        }
+
+        /* Custom Scrollbar for Hand & Logs */
+        ::-webkit-scrollbar {
+            height: 8px;
+            width: 6px;
+        }
+        ::-webkit-scrollbar-track {
+            background: rgba(0, 0, 0, 0.2);
+            border-radius: 4px;
+        }
+        ::-webkit-scrollbar-thumb {
+            background: rgba(255, 255, 255, 0.2);
+            border-radius: 4px;
+        }
+        ::-webkit-scrollbar-thumb:hover {
+            background: rgba(255, 255, 255, 0.4);
+        }
+    </style>
+</head>
+<body class="min-h-screen text-slate-100 flex flex-col justify-between overflow-hidden">
+
+    <script>
+        /* Web Audio API Sound Effects Synthesizer */
+        class SoundEngine {
+            constructor() {
+                this.ctx = null;
+                this.enabled = true;
+            }
+
+            init() {
+                if (!this.ctx) {
+                    this.ctx = new (window.AudioContext || window.webkitAudioContext)();
+                }
+            }
+
+            playTone(freq, duration, type = 'sine', volume = 0.1) {
+                if (!this.enabled || !this.ctx) return;
+                try {
+                    const osc = this.ctx.createOscillator();
+                    const gain = this.ctx.createGain();
+                    osc.type = type;
+                    osc.frequency.value = freq;
+                    gain.gain.setValueAtTime(volume, this.ctx.currentTime);
+                    gain.gain.exponentialRampToValueAtTime(0.0001, this.ctx.currentTime + duration);
+                    osc.connect(gain);
+                    gain.connect(this.ctx.destination);
+                    osc.start();
+                    osc.stop(this.ctx.currentTime + duration);
+                } catch(e) {}
+            }
+
+            playCardDraw() {
+                this.init();
+                this.playTone(300, 0.08, 'triangle', 0.15);
+                setTimeout(() => this.playTone(450, 0.08, 'sine', 0.1), 40);
+            }
+
+            playCardPlay() {
+                this.init();
+                this.playTone(180, 0.1, 'square', 0.12);
+                setTimeout(() => this.playTone(320, 0.1, 'sine', 0.15), 50);
+            }
+
+            playUnoSound() {
+                this.init();
+                if (!this.ctx) return;
+                const now = this.ctx.currentTime;
+                this.playTone(523.25, 0.15, 'sawtooth', 0.2); // C5
+                setTimeout(() => this.playTone(659.25, 0.15, 'sawtooth', 0.2), 120); // E5
+                setTimeout(() => this.playTone(783.99, 0.3, 'sawtooth', 0.25), 240); // G5
+            }
+
+            playSpecialSound() {
+                this.init();
+                this.playTone(600, 0.1, 'sine', 0.2);
+                setTimeout(() => this.playTone(800, 0.1, 'sine', 0.2), 80);
+                setTimeout(() => this.playTone(1000, 0.15, 'sine', 0.2), 160);
+            }
+
+            playWinFanfare() {
+                this.init();
+                const notes = [523.25, 659.25, 783.99, 1046.50];
+                notes.forEach((freq, idx) => {
+                    setTimeout(() => this.playTone(freq, 0.3, 'triangle', 0.25), idx * 150);
+                });
+            }
+
+            playCatchSound() {
+                this.init();
+                this.playTone(200, 0.15, 'sawtooth', 0.25);
+                setTimeout(() => this.playTone(150, 0.2, 'sawtooth', 0.25), 100);
+            }
+        }
+
+        const sounds = new SoundEngine();
+    </script>
+
+    <!-- Top Navigation Bar -->
+    <header class="w-full bg-slate-900/80 backdrop-blur-md border-b border-slate-700/50 px-4 py-3 flex justify-between items-center z-30">
+        <div class="flex items-center gap-3">
+            <div class="bg-gradient-to-r from-red-500 via-yellow-500 to-blue-500 p-1.5 rounded-xl shadow-md">
+                <span class="font-display text-2xl text-white tracking-wider px-2">UNO</span>
+            </div>
+            <h1 class="font-bold text-lg hidden sm:block text-slate-200">Master Edition</h1>
+        </div>
+
+        <div class="flex items-center gap-2 sm:gap-4">
+            <button id="sound-toggle-btn" onclick="toggleSound()" class="p-2.5 bg-slate-800 hover:bg-slate-700 text-slate-300 rounded-xl transition border border-slate-700 flex items-center gap-2 text-sm font-semibold">
+                <i id="sound-icon" class="fas fa-volume-up text-emerald-400"></i>
+                <span class="hidden md:inline">Sound</span>
+            </button>
+            <button onclick="openStatsModal()" class="p-2.5 bg-slate-800 hover:bg-slate-700 text-slate-300 rounded-xl transition border border-slate-700 flex items-center gap-2 text-sm font-semibold">
+                <i class="fas fa-chart-bar text-amber-400"></i>
+                <span class="hidden md:inline">Stats</span>
+            </button>
+            <button onclick="openSetupModal()" class="p-2.5 bg-indigo-600 hover:bg-indigo-500 text-white rounded-xl transition shadow-lg shadow-indigo-600/30 flex items-center gap-2 text-sm font-bold">
+                <i class="fas fa-cog"></i>
+                <span class="hidden sm:inline">New Game</span>
+            </button>
+        </div>
+    </header>
+
+    <!-- Main Table View -->
+    <main class="flex-1 relative flex flex-col justify-between items-center p-2 sm:p-6 max-w-7xl w-full mx-auto">
+
+        <!-- Top AI Opponents Section -->
+        <div id="ai-opponents-container" class="w-full flex justify-around items-center pt-2 z-10 min-h-[110px]">
+            <!-- Dynamically injected AI player containers -->
+        </div>
+
+        <!-- Center Play Area / Table -->
+        <div class="w-full max-w-3xl poker-table rounded-3xl my-2 p-4 sm:p-8 flex flex-col items-center justify-center relative min-h-[260px] sm:min-h-[320px]">
+            
+            <!-- Current Active Direction Indicator -->
+            <div class="absolute top-3 left-4 text-xs font-semibold text-emerald-200/70 flex items-center gap-2">
+                <span>Direction:</span>
+                <i id="direction-icon" class="fas fa-arrow-right text-amber-400 text-sm transition-transform duration-500"></i>
+            </div>
+
+            <!-- Active Wild Color Display Banner -->
+            <div id="active-color-banner" class="absolute top-3 right-4 px-3 py-1 rounded-full text-xs font-extrabold uppercase tracking-wider text-white shadow-md transition-all opacity-0 flex items-center gap-2">
+                <span>Current Color:</span>
+                <span id="active-color-name" class="font-black">RED</span>
+            </div>
+
+            <!-- Card Decks (Draw Pile & Discard Pile) -->
+            <div class="flex items-center justify-center gap-6 sm:gap-12 my-2">
+                <!-- Draw Deck Pile -->
+                <div class="flex flex-col items-center">
+                    <div id="draw-deck" onclick="handleDrawDeckClick()" class="card-container w-24 h-36 sm:w-28 sm:h-40 cursor-pointer group relative">
+                        <!-- Stack visual layers -->
+                        <div class="absolute inset-0 bg-slate-900 border-2 border-slate-700 rounded-xl transform translate-x-1.5 translate-y-1.5"></div>
+                        <div class="absolute inset-0 bg-slate-900 border-2 border-slate-700 rounded-xl transform translate-x-0.5 translate-y-0.5"></div>
+                        <div class="absolute inset-0 bg-gradient-to-br from-slate-800 to-slate-950 border-2 border-slate-300/80 rounded-xl shadow-card group-hover:scale-105 group-hover:-translate-y-1 transition-all flex flex-col items-center justify-center">
+                            <div class="card-oval bg-red-600 w-16 h-24 sm:w-20 sm:h-28 flex items-center justify-center border-2 border-amber-400 shadow-inner">
+                                <span class="font-display text-white text-xl sm:text-2xl tracking-tighter drop-shadow">UNO</span>
+                            </div>
+                        </div>
+                    </div>
+                    <span class="text-xs font-bold text-emerald-200/80 mt-2 flex items-center gap-1">
+                        <i class="fas fa-layer-group"></i> <span id="deck-count">108</span> cards
+                    </span>
+                </div>
+
+                <!-- Discard Pile -->
+                <div class="flex flex-col items-center">
+                    <div id="discard-pile" class="w-24 h-36 sm:w-28 sm:h-40 relative flex items-center justify-center">
+                        <!-- Top played card will be rendered here dynamically -->
+                    </div>
+                    <span class="text-xs font-bold text-emerald-200/80 mt-2">Discard Pile</span>
+                </div>
+            </div>
+
+            <!-- Action Status Banner -->
+            <div id="status-banner" class="mt-2 text-center bg-black/40 backdrop-blur-md px-4 py-1.5 rounded-full border border-white/10 max-w-md">
+                <p id="status-text" class="text-xs sm:text-sm font-semibold text-amber-300">Welcome to UNO! Start a game.</p>
+            </div>
+        </div>
+
+        <!-- Bottom Player Controls Area -->
+        <div class="w-full flex flex-col items-center gap-2 z-20">
+            
+            <!-- Player Status & UNO Button Row -->
+            <div class="w-full max-w-2xl flex justify-between items-center px-4">
+                <div class="flex items-center gap-3">
+                    <div id="player-avatar" class="w-10 h-10 rounded-full bg-indigo-600 border-2 border-indigo-400 flex items-center justify-center font-bold text-white shadow-md">
+                        P
+                    </div>
+                    <div>
+                        <div class="flex items-center gap-2">
+                            <span id="player-name-display" class="font-bold text-sm sm:text-base text-white">Player</span>
+                            <span id="player-turn-badge" class="hidden text-xs bg-emerald-500/20 text-emerald-300 border border-emerald-500/40 px-2 py-0.5 rounded-full font-bold">Your Turn</span>
+                        </div>
+                        <span id="player-card-count" class="text-xs text-slate-400">7 Cards</span>
+                    </div>
+                </div>
+
+                <!-- UNO! Action Call Button -->
+                <button id="uno-call-btn" onclick="handleUnoButtonClick()" class="px-5 py-2.5 bg-gradient-to-r from-red-600 to-rose-700 hover:from-red-500 hover:to-rose-600 active:scale-95 text-white font-display text-lg tracking-wider rounded-2xl shadow-lg border-2 border-yellow-300/60 transition duration-200 disabled:opacity-40 disabled:cursor-not-allowed flex items-center gap-2">
+                    <i class="fas fa-bullhorn text-yellow-300"></i>
+                    <span>UNO!</span>
+                </button>
+            </div>
+
+            <!-- Player Card Hand Container -->
+            <div id="player-hand" class="player-hand w-full max-w-4xl overflow-x-auto py-4 px-6 flex justify-center items-center min-h-[160px] gap-1 sm:-space-x-8">
+                <!-- Cards dynamically rendered here -->
+            </div>
+        </div>
+
+    </main>
+
+    <!-- Color Selector Popup Modal (Wild / Wild Draw 4) -->
+    <div id="color-modal" class="fixed inset-0 bg-slate-950/80 backdrop-blur-md z-50 flex items-center justify-center hidden">
+        <div class="bg-slate-900 border border-slate-700 p-6 sm:p-8 rounded-3xl shadow-2xl max-w-sm w-full text-center">
+            <h3 class="font-display text-2xl text-white mb-2">Select Wild Color</h3>
+            <p class="text-xs text-slate-400 mb-6">Choose the active color for the next player.</p>
+            
+            <div class="grid grid-cols-2 gap-4">
+                <button onclick="selectWildColor('red')" class="h-20 bg-red-500 hover:bg-red-400 active:scale-95 rounded-2xl border-4 border-red-300/30 flex items-center justify-center font-display text-xl text-white shadow-lg transition">
+                    RED
+                </button>
+                <button onclick="selectWildColor('yellow')" class="h-20 bg-amber-500 hover:bg-amber-400 active:scale-95 rounded-2xl border-4 border-amber-300/30 flex items-center justify-center font-display text-xl text-white shadow-lg transition">
+                    YELLOW
+                </button>
+                <button onclick="selectWildColor('green')" class="h-20 bg-emerald-500 hover:bg-emerald-400 active:scale-95 rounded-2xl border-4 border-emerald-300/30 flex items-center justify-center font-display text-xl text-white shadow-lg transition">
+                    GREEN
+                </button>
+                <button onclick="selectWildColor('blue')" class="h-20 bg-blue-500 hover:bg-blue-400 active:scale-95 rounded-2xl border-4 border-blue-300/30 flex items-center justify-center font-display text-xl text-white shadow-lg transition">
+                    BLUE
+                </button>
+            </div>
+        </div>
+    </div>
+
+    <!-- Game Setup / Options Modal -->
+    <div id="setup-modal" class="fixed inset-0 bg-slate-950/85 backdrop-blur-md z-50 flex items-center justify-center p-4">
+        <div class="bg-slate-900 border border-slate-700 p-6 sm:p-8 rounded-3xl shadow-2xl max-w-md w-full">
+            <div class="text-center mb-6">
+                <div class="inline-block bg-gradient-to-r from-red-500 via-amber-500 to-blue-500 p-2 rounded-2xl mb-3 shadow-lg">
+                    <span class="font-display text-3xl text-white tracking-widest px-3">UNO</span>
+                </div>
+                <h2 class="font-bold text-xl text-white">Game Configuration</h2>
+                <p class="text-xs text-slate-400">Customize your match preferences</p>
+            </div>
+
+            <form onsubmit="saveGameSettings(event)" class="space-y-5">
+                <div>
+                    <label class="block text-xs font-bold uppercase tracking-wider text-slate-400 mb-2">Player Name</label>
+                    <input type="text" id="setup-player-name" value="Player" maxlength="12" required class="w-full bg-slate-800 border border-slate-700 rounded-xl px-4 py-2.5 text-white font-semibold focus:outline-none focus:border-indigo-500 transition">
+                </div>
+
+                <div>
+                    <label class="block text-xs font-bold uppercase tracking-wider text-slate-400 mb-2">AI Opponents</label>
+                    <div class="grid grid-cols-3 gap-3">
+                        <button type="button" onclick="setAiCount(1)" id="ai-btn-1" class="ai-select-btn py-2.5 bg-slate-800 hover:bg-slate-700 border border-slate-700 rounded-xl text-sm font-bold text-slate-300 transition">1 AI</button>
+                        <button type="button" onclick="setAiCount(2)" id="ai-btn-2" class="ai-select-btn py-2.5 bg-indigo-600 border border-indigo-500 rounded-xl text-sm font-bold text-white transition">2 AI</button>
+                        <button type="button" onclick="setAiCount(3)" id="ai-btn-3" class="ai-select-btn py-2.5 bg-slate-800 hover:bg-slate-700 border border-slate-700 rounded-xl text-sm font-bold text-slate-300 transition">3 AI</button>
+                    </div>
+                </div>
+
+                <div>
+                    <label class="block text-xs font-bold uppercase tracking-wider text-slate-400 mb-2">AI Speed / Difficulty</label>
+                    <select id="setup-ai-speed" class="w-full bg-slate-800 border border-slate-700 rounded-xl px-4 py-2.5 text-white text-sm font-semibold focus:outline-none focus:border-indigo-500 transition">
+                        <option value="1500">Normal (1.5s thinking delay)</option>
+                        <option value="800">Fast (0.8s thinking delay)</option>
+                        <option value="2200">Relaxed (2.2s thinking delay)</option>
+                    </select>
+                </div>
+
+                <div class="pt-2">
+                    <button type="submit" class="w-full py-3.5 bg-gradient-to-r from-emerald-500 to-teal-600 hover:from-emerald-400 hover:to-teal-500 text-white font-bold rounded-xl shadow-lg shadow-emerald-600/30 transition transform active:scale-98">
+                        Start Game
+                    </button>
+                </div>
+            </form>
+        </div>
+    </div>
+
+    <!-- Scoreboard & Statistics Modal -->
+    <div id="stats-modal" class="fixed inset-0 bg-slate-950/80 backdrop-blur-md z-50 flex items-center justify-center p-4 hidden">
+        <div class="bg-slate-900 border border-slate-700 p-6 sm:p-8 rounded-3xl shadow-2xl max-w-md w-full">
+            <div class="flex justify-between items-center mb-6">
+                <h3 class="font-display text-2xl text-white">Player Statistics</h3>
+                <button onclick="closeStatsModal()" class="text-slate-400 hover:text-white p-2">
+                    <i class="fas fa-times text-xl"></i>
+                </button>
+            </div>
+
+            <div class="grid grid-cols-2 gap-4 mb-6">
+                <div class="bg-slate-800/80 p-4 rounded-2xl border border-slate-700/60 text-center">
+                    <span class="block text-xs text-slate-400 font-bold uppercase">Games Won</span>
+                    <span id="stat-wins" class="font-display text-3xl text-emerald-400">0</span>
+                </div>
+                <div class="bg-slate-800/80 p-4 rounded-2xl border border-slate-700/60 text-center">
+                    <span class="block text-xs text-slate-400 font-bold uppercase">Total Played</span>
+                    <span id="stat-played" class="font-display text-3xl text-indigo-400">0</span>
+                </div>
+                <div class="bg-slate-800/80 p-4 rounded-2xl border border-slate-700/60 text-center">
+                    <span class="block text-xs text-slate-400 font-bold uppercase">Total Points</span>
+                    <span id="stat-points" class="font-display text-3xl text-amber-400">0</span>
+                </div>
+                <div class="bg-slate-800/80 p-4 rounded-2xl border border-slate-700/60 text-center">
+                    <span class="block text-xs text-slate-400 font-bold uppercase">Cards Played</span>
+                    <span id="stat-cards-played" class="font-display text-3xl text-rose-400">0</span>
+                </div>
+            </div>
+
+            <button onclick="closeStatsModal()" class="w-full py-3 bg-slate-800 hover:bg-slate-700 text-white font-bold rounded-xl transition border border-slate-700">
+                Close
+            </button>
+        </div>
+    </div>
+
+    <script>
+        /* Game Configuration State */
+        const gameState = {
+            players: [],             // Array of player objects {id, name, isAi, hand: [], calledUno: false}
+            currentPlayerIdx: 0,
+            direction: 1,            // 1: Clockwise, -1: Counter-Clockwise
+            deck: [],
+            discardPile: [],
+            currentColor: null,      // Active color (especially for Wilds)
+            currentValue: null,
+            aiCount: 2,
+            aiSpeed: 1500,
+            playerName: "Player",
+            gameInProgress: false,
+            pendingWildCard: null,   // Card waiting for color choice
+            stats: {
+                wins: 0,
+                played: 0,
+                points: 0,
+                cardsPlayed: 0
+            }
+        };
+
+        const CARD_COLORS = ['red', 'yellow', 'green', 'blue'];
+        const CARD_VALUES = ['0', '1', '2', '3', '4', '5', '6', '7', '8', '9', 'skip', 'reverse', 'draw2'];
+
+        /* Initialization & Deck Setup */
+        function createDeck() {
+            const deck = [];
+            let cardId = 1;
+
+            CARD_COLORS.forEach(color => {
+                // One '0' per color
+                deck.push({ id: cardId++, color, value: '0' });
+
+                // Two of each 1-9, Skip, Reverse, Draw2
+                for (let i = 0; i < 2; i++) {
+                    ['1','2','3','4','5','6','7','8','9','skip','reverse','draw2'].forEach(value => {
+                        deck.push({ id: cardId++, color, value });
+                    });
+                }
+            });
+
+            // 4 Wild and 4 Wild Draw 4 cards
+            for (let i = 0; i < 4; i++) {
+                deck.push({ id: cardId++, color: 'wild', value: 'wild' });
+                deck.push({ id: cardId++, color: 'wild', value: 'draw4' });
+            }
+
+            return shuffle(deck);
+        }
+
+        function shuffle(array) {
+            for (let i = array.length - 1; i > 0; i--) {
+                const j = Math.floor(Math.random() * (i + 1));
+                [array[i], array[j]] = [array[j], array[i]];
+            }
+            return array;
+        }
+
+        function startNewGame() {
+            gameState.deck = createDeck();
+            gameState.discardPile = [];
+            gameState.direction = 1;
+            gameState.currentPlayerIdx = 0;
+            gameState.gameInProgress = true;
+
+            // Setup Players
+            gameState.players = [
+                { id: 0, name: gameState.playerName, isAi: false, hand: [], calledUno: false }
+            ];
+
+            const aiNames = ['Bot Alex', 'Bot Maya', 'Bot Sam'];
+            for (let i = 0; i < gameState.aiCount; i++) {
+                gameState.players.push({
+                    id: i + 1,
+                    name: aiNames[i],
+                    isAi: true,
+                    hand: [],
+                    calledUno: false
+                });
+            }
+
+            // Deal 7 cards to each player
+            for (let i = 0; i < 7; i++) {
+                gameState.players.forEach(p => {
+                    p.hand.push(gameState.deck.pop());
+                });
+            }
+
+            // Draw initial top card for discard pile (Ensure non-wild start)
+            let topCard = gameState.deck.pop();
+            while (topCard.color === 'wild') {
+                gameState.deck.unshift(topCard);
+                topCard = gameState.deck.pop();
+            }
+
+            gameState.discardPile.push(topCard);
+            gameState.currentColor = topCard.color;
+            gameState.currentValue = topCard.value;
+
+            // Update Statistics
+            gameState.stats.played++;
+            saveStats();
+
+            renderGameUI();
+            updateStatusText(`Game started! ${gameState.players[0].name}'s turn.`);
+            sounds.playCardDraw();
+
+            // Check first player turn if AI
+            checkTurn();
+        }
+
+        function checkTurn() {
+            if (!gameState.gameInProgress) return;
+
+            const player = gameState.players[gameState.currentPlayerIdx];
+            updateTurnBadge();
+
+            if (player.isAi) {
+                updateStatusText(`${player.name} is thinking...`);
+                setTimeout(() => playAiTurn(player), gameState.aiSpeed);
+            } else {
+                updateStatusText(`Your turn! Play a matching card or draw.`);
+            }
+        }
+
+        function advanceTurn(skipNext = false) {
+            const numPlayers = gameState.players.length;
+            let step = gameState.direction;
+            
+            if (skipNext) {
+                step *= 2;
+            }
+
+            gameState.currentPlayerIdx = (gameState.currentPlayerIdx + step) % numPlayers;
+            if (gameState.currentPlayerIdx < 0) {
+                gameState.currentPlayerIdx += numPlayers;
+            }
+
+            renderGameUI();
+            checkTurn();
+        }
+
+        function isCardPlayable(card) {
+            if (card.color === 'wild') return true;
+            return card.color === gameState.currentColor || card.value === gameState.currentValue;
+        }
+
+        function playCard(playerIdx, cardIndex, chosenWildColor = null) {
+            const player = gameState.players[playerIdx];
+            const card = player.hand[cardIndex];
+
+            if (!isCardPlayable(card)) return false;
+
+            // Remove from player hand
+            player.hand.splice(cardIndex, 1);
+            gameState.discardPile.push(card);
+            sounds.playCardPlay();
+
+            // Increment stats if human
+            if (!player.isAi) {
+                gameState.stats.cardsPlayed++;
+                saveStats();
+            }
+
+            // Auto-reset UNO call state if card count > 1
+            if (player.hand.length !== 1) {
+                player.calledUno = false;
+            }
+
+            // Check Win Condition
+            if (player.hand.length === 0) {
+                handleVictory(player);
+                return true;
+            }
+
+            // Handle UNO penalty check if forgot to call
+            if (player.hand.length === 1 && !player.calledUno) {
+                // If player forgot UNO call on turn completion, penalty prompt or AI auto check
+                if (player.isAi) {
+                    // AI has 70% chance to remember UNO call
+                    if (Math.random() < 0.7) {
+                        player.calledUno = true;
+                        sounds.playUnoSound();
+                        updateStatusText(`${player.name} shouted "UNO!"`);
+                    }
+                }
+            }
+
+            // Handle Card Effects
+            let skipNext = false;
+            gameState.currentValue = card.value;
+
+            if (card.color === 'wild') {
+                gameState.currentColor = chosenWildColor || 'red';
+                sounds.playSpecialSound();
+
+                if (card.value === 'draw4') {
+                    const nextPlayer = getNextPlayer();
+                    drawCardsForPlayer(nextPlayer, 4);
+                    updateStatusText(`${player.name} played Wild Draw 4! ${nextPlayer.name} draws 4 cards.`);
+                    skipNext = true;
+                } else {
+                    updateStatusText(`${player.name} played Wild! Color set to ${gameState.currentColor.toUpperCase()}.`);
+                }
+            } else {
+                gameState.currentColor = card.color;
+
+                if (card.value === 'skip') {
+                    skipNext = true;
+                    sounds.playSpecialSound();
+                    updateStatusText(`${player.name} played Skip! ${getNextPlayer().name}'s turn is skipped.`);
+                } else if (card.value === 'reverse') {
+                    sounds.playSpecialSound();
+                    if (gameState.players.length === 2) {
+                        skipNext = true; // In 2-player UNO, reverse acts as skip
+                    } else {
+                        gameState.direction *= -1;
+                    }
+                    updateStatusText(`${player.name} played Reverse! Play order reversed.`);
+                } else if (card.value === 'draw2') {
+                    const nextPlayer = getNextPlayer();
+                    drawCardsForPlayer(nextPlayer, 2);
+                    sounds.playSpecialSound();
+                    skipNext = true;
+                    updateStatusText(`${player.name} played Draw 2! ${nextPlayer.name} draws 2 cards.`);
+                } else {
+                    updateStatusText(`${player.name} played ${card.color.toUpperCase()} ${card.value.toUpperCase()}.`);
+                }
+            }
+
+            advanceTurn(skipNext);
+            return true;
+        }
+
+        function drawCardsForPlayer(player, count) {
+            for (let i = 0; i < count; i++) {
+                if (gameState.deck.length === 0) {
+                    reshuffleDiscardIntoDeck();
+                }
+                if (gameState.deck.length > 0) {
+                    player.hand.push(gameState.deck.pop());
+                }
+            }
+        }
+
+        function reshuffleDiscardIntoDeck() {
+            if (gameState.discardPile.length <= 1) return;
+            const topCard = gameState.discardPile.pop();
+            gameState.deck = shuffle([...gameState.discardPile]);
+            gameState.discardPile = [topCard];
+            updateStatusText("Reshuffling discard pile into draw deck...");
+        }
+
+        function getNextPlayer() {
+            let nextIdx = (gameState.currentPlayerIdx + gameState.direction) % gameState.players.length;
+            if (nextIdx < 0) nextIdx += gameState.players.length;
+            return gameState.players[nextIdx];
+        }
+
+        function playAiTurn(aiPlayer) {
+            // Check playable cards
+            const playableIndices = [];
+            aiPlayer.hand.forEach((card, idx) => {
+                if (isCardPlayable(card)) {
+                    playableIndices.push(idx);
+                }
+            });
+
+            if (playableIndices.length > 0) {
+                // AI Strategy: Prioritize matching colors/numbers, save Wilds for last unless necessary
+                let selectedIndex = playableIndices[0];
+                
+                const nonWilds = playableIndices.filter(i => aiPlayer.hand[i].color !== 'wild');
+                if (nonWilds.length > 0) {
+                    // Pick matching action or highest color count
+                    selectedIndex = nonWilds[Math.floor(Math.random() * nonWilds.length)];
+                }
+
+                const cardToPlay = aiPlayer.hand[selectedIndex];
+
+                // If Wild, AI chooses its most frequent color
+                let chosenColor = null;
+                if (cardToPlay.color === 'wild') {
+                    const colorCounts = { red: 0, yellow: 0, green: 0, blue: 0 };
+                    aiPlayer.hand.forEach(c => {
+                        if (c.color !== 'wild') colorCounts[c.color]++;
+                    });
+                    chosenColor = Object.keys(colorCounts).reduce((a, b) => colorCounts[a] > colorCounts[b] ? a : b);
+                }
+
+                playCard(gameState.currentPlayerIdx, selectedIndex, chosenColor);
+            } else {
+                // AI must draw card
+                if (gameState.deck.length === 0) reshuffleDiscardIntoDeck();
+                if (gameState.deck.length > 0) {
+                    const drawnCard = gameState.deck.pop();
+                    aiPlayer.hand.push(drawnCard);
+                    sounds.playCardDraw();
+                    updateStatusText(`${aiPlayer.name} could not play and drew a card.`);
+
+                    // AI tries to play drawn card if playable
+                    if (isCardPlayable(drawnCard)) {
+                        setTimeout(() => {
+                            const newIdx = aiPlayer.hand.length - 1;
+                            let chosenColor = null;
+                            if (drawnCard.color === 'wild') chosenColor = 'red';
+                            playCard(gameState.currentPlayerIdx, newIdx, chosenColor);
+                        }, 600);
+                        return;
+                    }
+                }
+                advanceTurn();
+            }
+        }
+
+        function handleHumanCardClick(cardIndex) {
+            if (gameState.currentPlayerIdx !== 0 || !gameState.gameInProgress) return;
+
+            const player = gameState.players[0];
+            const card = player.hand[cardIndex];
+
+            if (!isCardPlayable(card)) {
+                updateStatusText("Cannot play that card! Color or value must match.");
+                return;
+            }
+
+            // Check if UNO was required and called
+            if (player.hand.length === 2 && !player.calledUno) {
+                // Warn or allow auto-prompt
+                updateStatusText("Don't forget to call UNO before playing your 2nd to last card!");
+            }
+
+            if (card.color === 'wild') {
+                gameState.pendingWildCard = cardIndex;
+                openColorModal();
+            } else {
+                playCard(0, cardIndex);
+            }
+        }
+
+        function handleDrawDeckClick() {
+            if (gameState.currentPlayerIdx !== 0 || !gameState.gameInProgress) return;
+
+            const player = gameState.players[0];
+            if (gameState.deck.length === 0) reshuffleDiscardIntoDeck();
+
+            if (gameState.deck.length > 0) {
+                const drawnCard = gameState.deck.pop();
+                player.hand.push(drawnCard);
+                sounds.playCardDraw();
+                
+                renderGameUI();
+
+                if (isCardPlayable(drawnCard)) {
+                    updateStatusText(`You drew a playable ${drawnCard.color.toUpperCase()} ${drawnCard.value.toUpperCase()}! Click it to play or end turn.`);
+                } else {
+                    updateStatusText(`You drew a card. No valid moves.`);
+                    setTimeout(() => advanceTurn(), 1000);
+                }
+            }
+        }
+
+        function handleUnoButtonClick() {
+            if (!gameState.gameInProgress) return;
+            const humanPlayer = gameState.players[0];
+
+            // If player is down to 1 or 2 cards, set call state
+            if (humanPlayer.hand.length <= 2) {
+                humanPlayer.calledUno = true;
+                sounds.playUnoSound();
+                updateStatusText(`You shouted "UNO!" 📣`);
+                renderGameUI();
+                return;
+            }
+
+            // Catch AI players who forgot UNO!
+            let caughtAi = false;
+            gameState.players.forEach(p => {
+                if (p.isAi && p.hand.length === 1 && !p.calledUno) {
+                    caughtAi = true;
+                    sounds.playCatchSound();
+                    drawCardsForPlayer(p, 2);
+                    updateStatusText(`You caught ${p.name} forgetting UNO! They draw 2 penalty cards.`);
+                }
+            });
+
+            if (!caughtAi) {
+                updateStatusText("No players missed an UNO call right now.");
+            }
+        }
+
+        function selectWildColor(color) {
+            closeColorModal();
+            if (gameState.pendingWildCard !== null) {
+                const cardIdx = gameState.pendingWildCard;
+                gameState.pendingWildCard = null;
+                playCard(0, cardIdx, color);
+            }
+        }
+
+        function handleVictory(winner) {
+            gameState.gameInProgress = false;
+
+            // Calculate Winner Points (Sum of all other players' remaining hands)
+            let roundScore = 0;
+            gameState.players.forEach(p => {
+                if (p.id !== winner.id) {
+                    p.hand.forEach(c => {
+                        if (c.value === 'skip' || c.value === 'reverse' || c.value === 'draw2') roundScore += 20;
+                        else if (c.color === 'wild') roundScore += 50;
+                        else roundScore += parseInt(c.value) || 0;
+                    });
+                }
+            });
+
+            if (!winner.isAi) {
+                gameState.stats.wins++;
+                gameState.stats.points += roundScore;
+                saveStats();
+                sounds.playWinFanfare();
+                updateStatusText(`🎉 CONGRATULATIONS! You won the game with +${roundScore} points!`);
+            } else {
+                updateStatusText(`🎮 Game Over! ${winner.name} won this round.`);
+            }
+
+            setTimeout(() => {
+                alert(`${winner.name} wins the match!\nPoints awarded: ${roundScore}`);
+            }, 300);
+        }
+
+        function getCardColorClass(color) {
+            switch(color) {
+                case 'red': return 'bg-red-600 border-red-400 text-red-600';
+                case 'yellow': return 'bg-amber-500 border-amber-300 text-amber-500';
+                case 'green': return 'bg-emerald-600 border-emerald-400 text-emerald-600';
+                case 'blue': return 'bg-blue-600 border-blue-400 text-blue-600';
+                case 'wild': return 'bg-gradient-to-br from-red-500 via-amber-500 via-emerald-500 to-blue-500 border-slate-300 text-slate-800';
+                default: return 'bg-slate-800 border-slate-600 text-white';
+            }
+        }
+
+        function getCardSymbolHTML(value) {
+            switch(value) {
+                case 'skip': return '<i class="fas fa-ban"></i>';
+                case 'reverse': return '<i class="fas fa-sync-alt"></i>';
+                case 'draw2': return '+2';
+                case 'draw4': return '+4';
+                case 'wild': return '<i class="fas fa-star"></i>';
+                default: return value;
+            }
+        }
+
+        function createCardHTML(card, isInteractive = false, onClickHandler = '') {
+            const colorClass = getCardColorClass(card.color);
+            const symbol = getCardSymbolHTML(card.value);
+
+            return `
+                <div onclick="${onClickHandler}" class="uno-card w-20 h-32 sm:w-24 sm:h-36 ${isInteractive ? 'cursor-pointer hover:scale-105' : ''} transition-all duration-200 select-none">
+                    <div class="uno-card-inner shadow-card rounded-xl border-2 ${colorClass} p-1.5 flex flex-col justify-between relative overflow-hidden">
+                        
+                        <!-- Top Left Value -->
+                        <div class="text-white text-xs sm:text-sm font-black font-display leading-none flex items-center justify-start">
+                            ${symbol}
+                        </div>
+
+                        <!-- Center Oval Icon -->
+                        <div class="card-oval bg-white/90 w-full h-16 sm:h-20 self-center flex items-center justify-center shadow-inner border border-white">
+                            <span class="font-display text-2xl sm:text-3xl font-black ${colorClass.split(' ').pop()} drop-shadow-sm">
+                                ${symbol}
+                            </span>
+                        </div>
+
+                        <!-- Bottom Right Value (Inverted) -->
+                        <div class="text-white text-xs sm:text-sm font-black font-display leading-none flex items-center justify-end transform rotate-180">
+                            ${symbol}
+                        </div>
+                    </div>
+                </div>
+            `;
+        }
+
+        function renderGameUI() {
+            // Render AI Opponents
+            const aiContainer = document.getElementById('ai-opponents-container');
+            aiContainer.innerHTML = '';
+
+            gameState.players.filter(p => p.isAi).forEach(ai => {
+                const isCurrent = gameState.players[gameState.currentPlayerIdx].id === ai.id;
+                const aiEl = document.createElement('div');
+                aiEl.className = `flex flex-col items-center p-2 sm:p-3 rounded-2xl transition-all border ${isCurrent ? 'bg-indigo-950/80 border-indigo-400 shadow-glow scale-105' : 'bg-slate-900/60 border-slate-800'}`;
+
+                aiEl.innerHTML = `
+                    <div class="relative">
+                        <div class="w-10 h-10 sm:w-12 sm:h-12 rounded-full bg-slate-800 border-2 ${isCurrent ? 'border-amber-400' : 'border-slate-600'} flex items-center justify-center text-lg">
+                            🤖
+                        </div>
+                        ${ai.calledUno ? '<span class="absolute -top-2 -right-2 bg-red-600 text-yellow-300 font-display text-[10px] px-1.5 py-0.5 rounded-full border border-yellow-300 animate-bounce">UNO!</span>' : ''}
+                    </div>
+                    <span class="font-bold text-xs sm:text-sm text-slate-200 mt-1">${ai.name}</span>
+                    <span class="text-[11px] text-slate-400 font-semibold"><i class="fas fa-layer-group"></i> ${ai.hand.length} cards</span>
+                `;
+                aiContainer.appendChild(aiEl);
+            });
+
+            // Render Player Hand
+            const handContainer = document.getElementById('player-hand');
+            handContainer.innerHTML = '';
+            const humanPlayer = gameState.players[0];
+
+            humanPlayer.hand.forEach((card, index) => {
+                const cardWrapper = document.createElement('div');
+                cardWrapper.className = 'transition-all duration-150 transform hover:-translate-y-4';
+                cardWrapper.innerHTML = createCardHTML(card, true, `handleHumanCardClick(${index})`);
+                handContainer.appendChild(cardWrapper);
+            });
+
+            document.getElementById('player-card-count').innerText = `${humanPlayer.hand.length} Cards`;
+
+            // Render Discard Pile
+            const discardContainer = document.getElementById('discard-pile');
+            if (gameState.discardPile.length > 0) {
+                const topCard = gameState.discardPile[gameState.discardPile.length - 1];
+                discardContainer.innerHTML = createCardHTML(topCard, false);
+            }
+
+            // Render Direction
+            const dirIcon = document.getElementById('direction-icon');
+            dirIcon.style.transform = gameState.direction === 1 ? 'rotate(0deg)' : 'rotate(180deg)';
+
+            // Render Active Color Banner
+            const colorBanner = document.getElementById('active-color-banner');
+            const colorName = document.getElementById('active-color-name');
+            if (gameState.currentColor) {
+                colorBanner.classList.remove('opacity-0');
+                colorName.innerText = gameState.currentColor.toUpperCase();
+                colorBanner.style.backgroundColor = getHexForColor(gameState.currentColor);
+            }
+
+            // UNO Button Pulse state
+            const unoBtn = document.getElementById('uno-call-btn');
+            if (humanPlayer.hand.length <= 2) {
+                unoBtn.classList.add('uno-btn-pulse');
+            } else {
+                unoBtn.classList.remove('uno-btn-pulse');
+            }
+
+            // Deck Count
+            document.getElementById('deck-count').innerText = gameState.deck.length;
+        }
+
+        function getHexForColor(color) {
+            switch(color) {
+                case 'red': return '#ef4444';
+                case 'yellow': return '#f59e0b';
+                case 'green': return '#10b981';
+                case 'blue': return '#3b82f6';
+                default: return '#64748b';
+            }
+        }
+
+        function updateStatusText(msg) {
+            document.getElementById('status-text').innerText = msg;
+        }
+
+        function updateTurnBadge() {
+            const isHuman = gameState.currentPlayerIdx === 0;
+            const badge = document.getElementById('player-turn-badge');
+            if (isHuman) {
+                badge.classList.remove('hidden');
+            } else {
+                badge.classList.add('hidden');
+            }
+        }
+
+        function openSetupModal() {
+            document.getElementById('setup-modal').classList.remove('hidden');
+        }
+
+        function closeSetupModal() {
+            document.getElementById('setup-modal').classList.add('hidden');
+        }
+
+        function setAiCount(count) {
+            gameState.aiCount = count;
+            document.querySelectorAll('.ai-select-btn').forEach((btn, idx) => {
+                if (idx + 1 === count) {
+                    btn.className = "ai-select-btn py-2.5 bg-indigo-600 border border-indigo-500 rounded-xl text-sm font-bold text-white transition";
+                } else {
+                    btn.className = "ai-select-btn py-2.5 bg-slate-800 hover:bg-slate-700 border border-slate-700 rounded-xl text-sm font-bold text-slate-300 transition";
+                }
+            });
+        }
+
+        function saveGameSettings(e) {
+            e.preventDefault();
+            const nameInput = document.getElementById('setup-player-name').value;
+            const speedInput = parseInt(document.getElementById('setup-ai-speed').value);
+
+            gameState.playerName = nameInput || "Player";
+            gameState.aiSpeed = speedInput;
+
+            document.getElementById('player-name-display').innerText = gameState.playerName;
+            document.getElementById('player-avatar').innerText = gameState.playerName.charAt(0).toUpperCase();
+
+            closeSetupModal();
+            startNewGame();
+        }
+
+        function openColorModal() {
+            document.getElementById('color-modal').classList.remove('hidden');
+        }
+
+        function closeColorModal() {
+            document.getElementById('color-modal').classList.add('hidden');
+        }
+
+        function openStatsModal() {
+            loadStats();
+            document.getElementById('stat-wins').innerText = gameState.stats.wins;
+            document.getElementById('stat-played').innerText = gameState.stats.played;
+            document.getElementById('stat-points').innerText = gameState.stats.points;
+            document.getElementById('stat-cards-played').innerText = gameState.stats.cardsPlayed;
+            document.getElementById('stats-modal').classList.remove('hidden');
+        }
+
+        function closeStatsModal() {
+            document.getElementById('stats-modal').classList.add('hidden');
+        }
+
+        function toggleSound() {
+            sounds.enabled = !sounds.enabled;
+            const icon = document.getElementById('sound-icon');
+            if (sounds.enabled) {
+                icon.className = "fas fa-volume-up text-emerald-400";
+            } else {
+                icon.className = "fas fa-volume-mute text-rose-400";
+            }
+        }
+
+        function saveStats() {
+            try {
+                localStorage.setItem('uno_game_stats', JSON.stringify(gameState.stats));
+            } catch(e) {}
+        }
+
+        function loadStats() {
+            try {
+                const data = localStorage.getItem('uno_game_stats');
+                if (data) {
+                    gameState.stats = JSON.parse(data);
+                }
+            } catch(e) {}
+        }
+
+        /* Auto load on window setup */
+        window.onload = function() {
+            loadStats();
+            // Start default game
+            startNewGame();
+        };
+    </script>
+</body>
+</html>
